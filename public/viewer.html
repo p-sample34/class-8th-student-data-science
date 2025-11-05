@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mark Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- jsPDF & AutoTable (for Non-Editable PDF Export) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    body {
+      font-family: "Poppins", sans-serif;
+      background: linear-gradient(to right, #101820, #1c1f24);
+      color: white;
+      margin: 0;
+      padding: 15px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #ffb400;
+      margin-bottom: 20px;
+      font-size: 1.6rem;
+    }
+
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 15px;
+      max-width: 1200px;
+      margin: auto;
+    }
+
+    .chart-container {
+      flex: 2;
+      width: 100%;
+      min-height: 300px;
+      background: #1a1a1a;
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(255, 180, 0, 0.3);
+    }
+
+    .chart-container canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    .rank-container {
+      width: 100%;
+      background: #222;
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(255, 180, 0, 0.2);
+      max-height: 350px;
+      overflow-y: auto;
+    }
+
+    .rank-container h3 {
+      text-align: center;
+      color: #ffb400;
+      margin-bottom: 10px;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    li {
+      padding: 8px;
+      font-size: 0.95rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .download-btn {
+      display: block;
+      margin: 20px auto;
+      padding: 12px 22px;
+      background: #ffb400;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: 0.3s;
+      width: 100%;
+      max-width: 350px;
+    }
+
+    .download-btn:hover {
+      background: #ffcc33;
+      transform: scale(1.03);
+    }
+
+    @media (max-width: 600px) {
+      li { font-size: 0.85rem; padding: 6px; }
+      h1 { font-size: 1.3rem; }
+      .chart-container { min-height: 250px; }
+    }
+  </style>
+</head>
+
+<body>
+  <h1>📈 Student Mark Viewer</h1>
+
+  <div class="container" id="report">
+    <div class="chart-container">
+      <canvas id="markChart"></canvas>
+    </div>
+
+    <div class="rank-container">
+      <h3>🏅 Rank List</h3>
+      <ul id="rankList"></ul>
+    </div>
+  </div>
+
+  <!-- PDF Export Button -->
+  <button class="download-btn" id="downloadPdfRankBtn">📄 Download Rank Sheet </button>
+
+  <script>
+    const API_URL = "https://class-6th-student-data-science.onrender.com";
+    let studentData = [];
+
+    async function loadData() {
+      const res = await fetch(`${API_URL}/marks`);
+      const data = await res.json();
+
+      data.sort((a, b) => b.obtainedMarks - a.obtainedMarks);
+
+      data.forEach((m, i) => {
+        m.rank = i + 1;
+        m.percentage = ((m.obtainedMarks / m.totalMarks) * 100).toFixed(2);
+      });
+
+      studentData = data;
+
+      const rankList = document.getElementById("rankList");
+      rankList.innerHTML = "";
+      data.forEach(m => {
+        const li = document.createElement("li");
+        li.textContent = `${m.rank}. ${m.name} (${m.roll}) - ${m.obtainedMarks}/${m.totalMarks} (${m.percentage}%)`;
+        rankList.appendChild(li);
+      });
+
+      const ctx = document.getElementById("markChart").getContext("2d");
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: data.map(m => `${m.name} (${m.roll})`),
+          datasets: [{
+            label: "Marks",
+            data: data.map(m => m.obtainedMarks),
+            backgroundColor: "rgba(255, 180, 0, 0.8)",
+            borderColor: "#ffb400",
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true, ticks: { color: "#fff" } },
+            x: { ticks: { color: "#fff" } }
+          },
+          plugins: { legend: { labels: { color: "#fff" } } }
+        }
+      });
+    }
+
+    // ✅ Non-Editable PDF Export
+    document.getElementById("downloadPdfRankBtn").addEventListener("click", () => {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const date = new Date().toLocaleDateString();
+
+      doc.setFontSize(16);
+      doc.text("Student Rank Sheet", 14, 15);
+      doc.setFontSize(11);
+      doc.text(`Date: ${date}`, 14, 22);
+
+      const tableData = studentData.map(m => [
+        m.rank, m.name, m.roll, m.obtainedMarks, m.totalMarks, m.percentage + "%"
+      ]);
+
+      doc.autoTable({
+        head: [["Rank", "Name", "Roll", "Marks", "Total", "%"]],
+        body: tableData,
+        startY: 30,
+        theme: "grid",
+        styles: { halign: "center" },
+        headStyles: { fillColor: [255, 180, 0], textColor: 0 }
+      });
+
+      doc.save(`Rank_Sheet_${date}.pdf`);
+    });
+
+    loadData();
+  </script>
+
+</body>
+</html>
